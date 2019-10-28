@@ -9,6 +9,7 @@ import re
 import logging
 from threading import Thread
 import signal
+
 def make_handshake_response(key):
         return \
           'HTTP/1.1 101 Switching Protocols\r\n'\
