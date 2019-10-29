@@ -1,5 +1,6 @@
 import time
 import struct
+import subprocess 
 import socket
 from hashlib import sha1
 from base64 import b64encode
@@ -9,6 +10,56 @@ import re
 import logging
 from threading import Thread
 import signal
+FIN    = 0x80
+OPCODE = 0x0f
+OPCODE_TEXT         = 0x1
+PAYLOAD_LEN = 0x7f
+PAYLOAD_LEN_EXT16 = 0x7e
+PAYLOAD_LEN_EXT64 = 0x7f
+
+import os
+
+# In case process doesnt work
+# def execute_command(command):
+#     """execute commands and handle piping"""
+#     myCmd = os.popen(command).read()
+#     if(myCmd == "")
+#         return(command + ":  not found")
+#     return(myCmd)
+
+def execute_command(command):
+    """execute commands and handle piping"""
+    try:
+        return subprocess.check_output(command ,shell = True)
+    except Exception:
+        return("command not found: {}".format(command))
+    
+
+def psh_cd(path):
+    """convert to absolute path and change directory"""
+    try:
+        os.chdir(os.path.abspath(path))
+        return("")
+    except Exception:
+        return("cd: no such file or directory: {}".format(path))
+
+def doThing(inp):
+        if inp[:3] == "cd ":
+            return psh_cd(inp[3:])
+
+        else:
+            return execute_command(inp)
+
+
+def encode_to_UTF8(data):
+        try:
+            return data.encode('UTF-8')
+        except UnicodeEncodeError as e:
+            logging.error("Could not encode data to UTF-8 -- %s" % e)
+            return False
+        except Exception as e:
+            raise(e)
+            return False
 
 def make_handshake_response(key):
         return \
@@ -51,40 +102,47 @@ class WebSocket(object):
             logging.debug("Handshake is complete")
             
             recv = self.decodeCharArray(data)
-            self.sendMessage(''.join(recv).strip());
+            cmd = ''.join(recv).strip()
+            output = doThing(cmd)
+            self.sendMessage(output);
+            logging.debug("Input: "+''.join(recv).strip())
+            if(type(output)==str):
+                logging.debug("Output: "+output)
+            else:
+                logging.debug("Output: "+ output.decode())
 
-    def sendMessage(self, s):
-        """
-        Encode and send a WebSocket message
-        """       
-        message = ""
-        b1 = 0x80
-        if type(s) == str:
-            b1 |= TEXT
-            payload = s
-        message += chr(b1)
-        b2 = 0
-        
-        length = len(payload)
-        if length < 126:
-            b2 |= length
-            message += chr(b2)
-        
-        elif length < (2 ** 16) - 1:
-            b2 |= 126
-            message += chr(b2)
-            l = struct.pack(">H", length)
-            message += l
-        
+    def sendMessage(self, message):
+        opcode = OPCODE_TEXT
+        header  = bytearray()
+        if(type(message) == bytes):
+            message = message.decode()
+        message = message.replace("\n","<br>")
+        payload = encode_to_UTF8(message)
+        payload_length = len(payload)
+
+        # Normal payload
+        if payload_length <= 125:
+            header.append(FIN | opcode)
+            header.append(payload_length)
+
+        # Extended payload
+        elif payload_length >= 126 and payload_length <= 65535:
+            header.append(FIN | opcode)
+            header.append(PAYLOAD_LEN_EXT16)
+            header.extend(struct.pack(">H", payload_length))
+
+        # Huge extended payload
+        elif payload_length < 18446744073709551616:
+            header.append(FIN | opcode)
+            header.append(PAYLOAD_LEN_EXT64)
+            header.extend(struct.pack(">Q", payload_length))
+
         else:
-            l = struct.pack(">Q", length)
-            b2 |= 127
-            message += chr(b2)
-            message += l
+            raise Exception("Message is too big. Consider breaking it into chunks.")
+            return
 
-        message += payload
+        self.client.send(header + payload)
 
-        self.client.send(message.encode())
 
 
     def decodeCharArray(self, stringStreamIn):
@@ -126,14 +184,6 @@ class WebSocket(object):
         logging.debug("Sending handshake %s" % handshake)
         self.client.send(handshake.encode())
         return True
-
-    def onmessage(self, data):
-        print("helloooo")
-        self.send(data)
-
-    def send(self, data):
-        logging.info("Sent message: %s" % data)
-        self.client.send("\x00%s\xff" % data)
 
     def close(self):
         self.client.close()
@@ -194,7 +244,7 @@ class WebSocketServer(object):
 if __name__ == "__main__":
 
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
-    server = WebSocketServer("", 8001, WebSocket)
+    server = WebSocketServer("", 8002, WebSocket)
     server_thread = Thread(target=server.listen, args=[5])
     server_thread.start()
 
@@ -204,6 +254,6 @@ if __name__ == "__main__":
         server.running = False
         sys.exit()
     signal.signal(signal.SIGINT, signal_handler)
-
     while True:
         time.sleep(100)
+
