@@ -1,9 +1,10 @@
 <html>
 <head>
   <title>Simple client</title>
-
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/rollups/aes.js"></script>
   <script type="text/javascript">
-    var ws;
+    var ws; 
+    var state = 0;
     
     function init() {
       // Connect to Web Socket
@@ -16,7 +17,14 @@
       ws.onmessage = function(e) {
         // e.data contains received string.
         if(e.data!="")
-        output( e.data);
+        {   
+            {
+              if(e.data == "Enter Password : ")
+                  state = 1;
+
+              output( e.data);
+            }
+        }
       };
       
       ws.onclose = function() {
@@ -32,7 +40,13 @@
       var input = document.getElementById("input");
       // You can send message to the Web Socket using ws.send.
       ws.send(input.value);
-      output("<b>SecureShell$ </b>" + input.value);
+      if(state == 1)
+      {
+          output("<b>SecureShell$ </b>" + "********");
+          state = 0;
+      }
+      else
+          output("<b>SecureShell$ </b>" + input.value);
       input.value = "";
       input.focus();
     }

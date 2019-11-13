@@ -17,15 +17,20 @@ PAYLOAD_LEN = 0x7f
 PAYLOAD_LEN_EXT16 = 0x7e
 PAYLOAD_LEN_EXT64 = 0x7f
 
+user_data = {"Rachana":"rachana"}
 import os
+def validate_username(username):
+    if username in user_data.keys():
+        user = username
+        return 1
+    else :
+        return 0
 
-# In case process doesnt work
-# def execute_command(command):
-#     """execute commands and handle piping"""
-#     myCmd = os.popen(command).read()
-#     if(myCmd == "")
-#         return(command + ":  not found")
-#     return(myCmd)
+def validate_password(user, password):
+    if user_data[user] == password:
+        return 1
+    else:
+        return 0
 
 def execute_command(command):
     """execute commands and handle piping"""
@@ -35,7 +40,7 @@ def execute_command(command):
         return("command not found: {}".format(command))
     
 
-def psh_cd(path):
+def cd_func(path):
     """convert to absolute path and change directory"""
     try:
         os.chdir(os.path.abspath(path))
@@ -45,7 +50,7 @@ def psh_cd(path):
 
 def doThing(inp):
         if inp[:3] == "cd ":
-            return psh_cd(inp[3:])
+            return cd_func(inp[3:])
 
         else:
             return execute_command(inp)
@@ -86,6 +91,9 @@ class WebSocket(object):
         self.handshaken = False
         self.header = ""
         self.data = ""
+        self.state = 0
+        self.user = ""
+
 
     def feed(self, data):
     
@@ -97,19 +105,40 @@ class WebSocket(object):
                 self.header = parts[0]
                 if self.dohandshake(self.header, parts[1]):
                     logging.info("Handshake successful")
+                    self.sendMessage("Enter Username : ")
+                    self.state = 1 
                     self.handshaken = True
         else:
             logging.debug("Handshake is complete")
             
             recv = self.decodeCharArray(data)
             cmd = ''.join(recv).strip()
-            output = doThing(cmd)
-            self.sendMessage(output);
-            logging.debug("Input: "+''.join(recv).strip())
-            if(type(output)==str):
-                logging.debug("Output: "+output)
+            if self.state == 1:
+                validation = validate_username(cmd)
+                if validation == 1:
+                    self.state = 2
+                    self.user = cmd
+                    self.sendMessage("Enter Password : ")
+                else:
+                    self.state = 1
+                    self.sendMessage("Invalid User! <br> Enter Username : ")
+            elif self.state == 2 :
+                password_validation = validate_password(self.user,cmd)
+                if password_validation == 1:
+                    self.sendMessage(self.user + " logged in.")
+                    self.state = 0
+                else:
+                    self.sendMessage("Wrong Password!")
+                    self.sendMessage("Enter Password : ")
+                    self.state = 2
             else:
-                logging.debug("Output: "+ output.decode())
+                output = doThing(cmd)
+                self.sendMessage(output);
+                logging.debug("Input: "+''.join(recv).strip())
+                if(type(output)==str):
+                    logging.debug("Output: "+output)
+                else:
+                    logging.debug("Output: "+ output.decode())
 
     def sendMessage(self, message):
         opcode = OPCODE_TEXT
