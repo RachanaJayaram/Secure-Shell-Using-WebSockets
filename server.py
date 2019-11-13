@@ -4,22 +4,58 @@ import subprocess
 import socket
 from hashlib import sha1
 from base64 import b64encode
+import base64
 import sys
 from select import select
 import re
 import logging
 from threading import Thread
 import signal
+from Crypto.Cipher import AES
+import os
+from Crypto import Random
+from hashlib import md5
+
 FIN    = 0x80
 OPCODE = 0x0f
 OPCODE_TEXT         = 0x1
 PAYLOAD_LEN = 0x7f
 PAYLOAD_LEN_EXT16 = 0x7e
 PAYLOAD_LEN_EXT64 = 0x7f
+BLOCK_SIZE = 16
+user_data ={}
+f = open("user_data.txt","r");
+for line in f.readlines():
+    data = line.split()
+    user_data[data[0]] = data[1]
+print(user_data)
 
-user_data = {"Rachana":"rachana"}
-import os
+
+def unpad(data):
+    return data[:-(data[-1] if type(data[-1]) == int else ord(data[-1]))]
+
+def bytes_to_key(data, salt, output=48):
+    assert len(salt) == 8, len(salt)
+    data += salt
+    key = md5(data).digest()
+    final_key = key
+    while len(final_key) < output:
+        key = md5(key + data).digest()
+        final_key += key
+    return final_key[:output]
+
+def decrypt(encrypted, passphrase = "Secret Passphrase".encode()):
+    encrypted = base64.b64decode(encrypted)
+    assert encrypted[0:8] == b"Salted__"
+    salt = encrypted[8:16]
+    key_iv = bytes_to_key(passphrase, salt, 32+16)
+    key = key_iv[:32]
+    iv = key_iv[32:]
+    aes = AES.new(key, AES.MODE_CBC, iv)
+    return unpad(aes.decrypt(encrypted[16:]))
+
 def validate_username(username):
+    
     if username in user_data.keys():
         user = username
         return 1
@@ -27,6 +63,8 @@ def validate_username(username):
         return 0
 
 def validate_password(user, password):
+    password = decrypt(password).decode("utf-8") 
+    print(password)
     if user_data[user] == password:
         return 1
     else:

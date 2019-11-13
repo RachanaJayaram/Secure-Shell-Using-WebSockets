@@ -39,14 +39,19 @@
     function onSubmit() {
       var input = document.getElementById("input");
       // You can send message to the Web Socket using ws.send.
-      ws.send(input.value);
       if(state == 1)
       {
+          var encrypted = CryptoJS.AES.encrypt(input.value, "Secret Passphrase").toString();
+          ws.send(encrypted);
+          alert(encrypted);
           output("<b>SecureShell$ </b>" + "********");
           state = 0;
       }
       else
+      {
+          ws.send(input.value);
           output("<b>SecureShell$ </b>" + input.value);
+      }
       input.value = "";
       input.focus();
     }
